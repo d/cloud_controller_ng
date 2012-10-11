@@ -64,7 +64,7 @@ module VCAP::CloudController
           basic_auth = {
             "X-Auth" => "Basic #{[[username, password].join(":")].pack("m0")}",
           }
-          x_accel = {"X-Accel-Redirect" => "/internal_redirect/#{uri}"}
+          x_accel = {"X-Accel-Redirect" => "/dea_next/#{uri}"}
           return [200, x_accel.merge(basic_auth), ""]
         end
 
