@@ -7,16 +7,16 @@ module VCAP::CloudController
     # FIXME: make space_id a relation check that checks the id and the url
     # part.  do everywhere
     it_behaves_like "a CloudController API", {
-      :path                => "/v2/apps",
-      :model               => Models::App,
-      :basic_attributes    => [:name, :space_guid, :runtime_guid, :framework_guid],
+      :path => "/v2/apps",
+      :model => Models::App,
+      :basic_attributes => [:name, :space_guid, :runtime_guid, :framework_guid],
       :required_attributes => [:name, :space_guid, :runtime_guid, :framework_guid],
-      :unique_attributes   => [:name, :space_guid],
+      :unique_attributes => [:name, :space_guid],
       :queryable_attributes => :name,
       :many_to_one_collection_ids => {
-        :space      => lambda { |app| Models::Space.make  },
-        :framework  => lambda { |app| Models::Framework.make },
-        :runtime    => lambda { |app| Models::Runtime.make   }
+        :space => lambda { |app| Models::Space.make },
+        :framework => lambda { |app| Models::Framework.make },
+        :runtime => lambda { |app| Models::Runtime.make }
       },
       :many_to_many_collection_ids => {
         :routes => lambda { |app|
@@ -28,7 +28,7 @@ module VCAP::CloudController
           route = Models::Route.make(:domain => domain, :space => app.space)
         }
       },
-      :one_to_many_collection_ids  => {
+      :one_to_many_collection_ids => {
         :service_bindings => lambda { |app|
           service_instance = Models::ServiceInstance.make(
             :space => app.space
@@ -47,29 +47,29 @@ module VCAP::CloudController
     end
 
     describe "validations" do
-      let(:app_obj)   { Models::App.make }
+      let(:app_obj) { Models::App.make }
       let(:decoded_response) { Yajl::Parser.parse(last_response.body) }
 
       describe "env" do
         it "should allow an empty environment" do
           hash = {}
-          update_hash = { :environment_json => hash }
+          update_hash = {:environment_json => hash}
 
           put "/v2/apps/#{app_obj.guid}", Yajl::Encoder.encode(update_hash), json_headers(admin_headers)
           last_response.status.should == 201
         end
 
         it "should allow multiple variables" do
-          hash = { :abc => 123, :def => "hi" }
-          update_hash = { :environment_json => hash }
+          hash = {:abc => 123, :def => "hi"}
+          update_hash = {:environment_json => hash}
           put "/v2/apps/#{app_obj.guid}", Yajl::Encoder.encode(update_hash), json_headers(admin_headers)
           last_response.status.should == 201
         end
 
-        [ "VMC", "vmc", "VCAP", "vcap" ].each do |k|
+        ["VMC", "vmc", "VCAP", "vcap"].each do |k|
           it "should not allow entries to start with #{k}" do
-            hash = { :abc => 123, "#{k}_abc" => "hi" }
-            update_hash = { :environment_json => hash }
+            hash = {:abc => 123, "#{k}_abc" => "hi"}
+            update_hash = {:environment_json => hash}
             put "/v2/apps/#{app_obj.guid}", Yajl::Encoder.encode(update_hash), json_headers(admin_headers)
             last_response.status.should == 400
             decoded_response["description"].should match /environment_json reserved_key:#{k}_abc/
@@ -79,7 +79,7 @@ module VCAP::CloudController
     end
 
     describe "command" do
-      let(:app_obj)   { Models::App.make }
+      let(:app_obj) { Models::App.make }
       let(:decoded_response) { Yajl::Parser.parse(last_response.body) }
 
       it "should have no command entry in the metadata if not provided" do
@@ -99,7 +99,7 @@ module VCAP::CloudController
     end
 
     describe "staging" do
-      let(:app_obj)   { Models::App.make }
+      let(:app_obj) { Models::App.make }
 
       it "should not restage on update if staging is not needed" do
         AppStager.should_not_receive(:stage_app)
@@ -177,7 +177,7 @@ module VCAP::CloudController
 
         MessageBus.should_receive(:publish).
           with("droplet.updated",
-               json_match(hash_including(expected)))
+          json_match(hash_including(expected)))
 
         put "/v2/apps/#{app_obj.guid}", req, json_headers(admin_headers)
         last_response.status.should == 201
@@ -196,10 +196,109 @@ module VCAP::CloudController
 
         MessageBus.should_receive(:publish).
           with("droplet.updated",
-               json_match(hash_including(expected)))
+          json_match(hash_including(expected)))
 
         put "/v2/apps/#{app_obj.guid}", req, json_headers(admin_headers)
         last_response.status.should == 201
+      end
+    end
+
+    describe "PUT", "/v2/apps/:guid/state" do
+      let(:app_obj) { Models::App.make }
+
+      subject do
+        req = Yajl::Encoder.encode(:state => "STARTED")
+        put "/v2/apps/#{app_obj.guid}/state", req, json_headers(admin_headers)
+      end
+
+      before do
+        Redis.stub(:new)
+        StagingTaskLog.stub(:fetch) { double(:log, task_log: "log output 1") }
+      end
+
+      context "when the app is staged" do
+        before do
+          # haxx to make the app appear staged
+          app_obj.package_hash = "abc"
+          app_obj.droplet_hash = "def"
+          app_obj.save
+        end
+
+        context "and started" do
+          before do
+            app_obj.state = "STARTED"
+            app_obj.save
+          end
+
+          it "does nothing" do
+            DeaClient.should_not_receive(:start)
+            MessageBus.should_not_receive(:publish)
+
+            subject
+
+            last_response.status.should == 200
+            app_obj.reload.state.should == "STARTED"
+          end
+        end
+
+        context "and not started" do
+          before do
+            app_obj.state = "STOPPED"
+            app_obj.save
+          end
+
+          it "should start the app" do
+            DeaClient.should_receive(:start)
+
+            expected = {
+              "droplet" => app_obj.guid,
+              "cc_partition" => config[:cc_partition],
+            }
+
+            MessageBus.should_receive(:publish).
+              with("droplet.updated",
+              json_match(hash_including(expected)))
+
+            EM.run do
+              subject
+              EM.next_tick { EM.stop }
+            end
+
+            last_response.status.should == 200
+            app_obj.reload.state.should == "STARTED"
+          end
+        end
+      end
+
+      context "when the app is not staged" do
+        before do
+          app_obj.package_hash = "def"
+          app_obj.save
+          app_obj.needs_staging?.should be_true
+        end
+
+        it "should stage the app and start it" do
+          AppStager.should_receive(:stage_app).with(app_obj)
+          DeaClient.should_receive(:start)
+
+          expected = {
+            "droplet" => app_obj.guid,
+            "cc_partition" => config[:cc_partition],
+          }
+
+          MessageBus.should_receive(:publish).
+            with("droplet.updated",
+            json_match(hash_including(expected)))
+
+          EM.run do
+            subject
+            EM.next_tick { EM.stop }
+          end
+
+          last_response.status.should == 200
+          pp last_response.body
+          app_obj.reload.state.should == "STARTED"
+        end
       end
     end
 
@@ -227,7 +326,7 @@ module VCAP::CloudController
 
         MessageBus.should_receive(:publish).
           with("droplet.updated",
-               json_match(hash_including(expected)))
+          json_match(hash_including(expected)))
 
         put "/v2/apps/#{app_obj.guid}", req, json_headers(admin_headers)
         last_response.status.should == 201
@@ -503,11 +602,11 @@ module VCAP::CloudController
           org = Models::Organization.make(:quota_definition => paid_quota)
           space = Models::Space.make(:organization => org)
           req = Yajl::Encoder.encode(:name => Sham.name,
-                                     :space_guid => space.guid,
-                                     :memory => 128,
-                                     :production => true,
-                                     :framework_guid => Models::Framework.make.guid,
-                                     :runtime_guid => Models::Runtime.make.guid)
+            :space_guid => space.guid,
+            :memory => 128,
+            :production => true,
+            :framework_guid => Models::Framework.make.guid,
+            :runtime_guid => Models::Runtime.make.guid)
 
           post("/v2/apps", req, headers_for(make_developer_for_space(space)))
 
@@ -521,10 +620,10 @@ module VCAP::CloudController
           org = Models::Organization.make(:quota_definition => free_quota)
           space = Models::Space.make(:organization => org)
           req = Yajl::Encoder.encode(:name => Sham.name,
-                                     :space_guid => space.guid,
-                                     :memory => 128,
-                                     :framework_guid => Models::Framework.make.guid,
-                                     :runtime_guid => Models::Runtime.make.guid)
+            :space_guid => space.guid,
+            :memory => 128,
+            :framework_guid => Models::Framework.make.guid,
+            :runtime_guid => Models::Runtime.make.guid)
 
           post("/v2/apps", req, headers_for(make_developer_for_space(space)))
 

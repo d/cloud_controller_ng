@@ -87,6 +87,34 @@ module VCAP::CloudController
       end
     end
 
+    def async_stage(id)
+      app = find_id_and_validate_access(:update, id)
+
+      # XXX: make it lazy??
+      if app.needs_staging?
+        Thread.new { AppStager.stage_app(app) }
+      end
+
+      if app.started?
+        return 200
+      else
+        DeaClient.start(app)
+        app.state = "STARTED"
+        app.save
+        send_droplet_updated_message(app)
+      end
+
+      # XXX this is really wrong, only show this when we have actually staged
+      redis_client = Redis.new(:host => @config[:redis][:host],
+        :port => @config[:redis][:port],
+        :password => @config[:redis][:password])
+      log = StagingTaskLog.fetch(id, redis_client)
+
+      return [200, {}, Sinatra::Helpers::Stream.new(EventMachine, false) { |out| out << log.task_log if log }]
+    end
+
+    put "#{path_id}/state", :async_stage
+
     private
 
     def after_modify(app)
