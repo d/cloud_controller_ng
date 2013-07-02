@@ -3,6 +3,7 @@
 require "vcap/component"
 require "vcap/ring_buffer"
 require "vcap/rest_api"
+require "sinatra/consumes"
 require "sinatra/reloader"
 require "securerandom"
 require "steno"
@@ -45,6 +46,7 @@ module Sinatra
     def self.registered(app)
       init_varz
 
+      app.register Sinatra::Consumes
       app.helpers VCAP::Helpers
 
       app.not_found do
