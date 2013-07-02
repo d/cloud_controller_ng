@@ -18,11 +18,20 @@ module VCAP::CloudController::RestController
         end
       end
 
-      [:post, :get, :put, :delete].each do |verb|
-        define_method(verb) do |*args, &blk|
-          (path, method) = *args
-          define_route(verb, path, method, &blk)
-        end
+      def get(path, method=nil, &blk)
+        define_route("get", path, method, {}, &blk)
+      end
+
+      def delete(path, method=nil, &blk)
+        define_route("delete", path, method, {}, &blk)
+      end
+
+      def post(path, method=nil, opts={}, &blk)
+        define_route("post", path, method, opts, &blk)
+      end
+
+      def put(path, method=nil, opts={}, &blk)
+        define_route("put", path, method, opts, &blk)
       end
 
       def define_routes
@@ -33,15 +42,11 @@ module VCAP::CloudController::RestController
       private
 
       def define_standard_routes
-        [
-          [:post,   path,    :create],
-          [:get,    path,    :enumerate],
-          [:get,    path_id, :read],
-          [:put,    path_id, :update],
-          [:delete, path_id, :delete]
-        ].each do |verb, path, method|
-          define_route(verb, path, method)
-        end
+        post   path,    :create
+        get    path,    :enumerate
+        get    path_id, :read
+        put    path_id, :update
+        delete path_id, :delete
       end
 
       def define_to_many_routes
