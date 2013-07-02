@@ -5,8 +5,7 @@ module VCAP::CloudController::RestController
     end
 
     module ClassMethods
-      def define_route(verb, path, method = nil, &blk)
-        opts = {}
+      def define_route(verb, path, method = nil, opts = {}, &blk)
         klass = self
         controller.send(verb, path, opts) do |*args|
           logger.debug "dispatch #{klass} #{verb} #{path}"
