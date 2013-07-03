@@ -407,10 +407,10 @@ module VCAP::CloudController
     get  "/staging/apps/:guid", :download_app
 
     # Make sure that nginx upload path rules do not apply to download paths!
-    post "#{DROPLET_PATH}/:guid/upload", :upload_droplet
+    form_post "#{DROPLET_PATH}/:guid/upload", :upload_droplet
     get  "#{DROPLET_PATH}/:guid/download", :download_droplet
 
-    post "#{BUILDPACK_CACHE_PATH}/:guid/upload", :upload_buildpack_cache
+    form_post "#{BUILDPACK_CACHE_PATH}/:guid/upload", :upload_buildpack_cache
     get "#{BUILDPACK_CACHE_PATH}/:guid/download", :download_buildpack_cache
   end
 end
