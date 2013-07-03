@@ -26,17 +26,17 @@ module VCAP::CloudController::RestController
         define_route("delete", path, method, {}, &blk)
       end
 
-      def post(path, method=nil, opts={consumes: :json}, &blk)
-        define_route("post", path, method, opts, &blk)
+      def post(path, method=nil, &blk)
+        define_route("post", path, method, {consumes: :json}, &blk)
       end
 
-      def put(path, method=nil, opts={consumes: :json}, &blk)
-        define_route("put", path, method, opts, &blk)
+      def put(path, method=nil, &blk)
+        define_route("put", path, method, {consumes: :json}, &blk)
       end
 
       # normal PUT that should not be restricted to json content type
       def form_put(path, method=nil, &blk)
-        put(path, method, {}, &blk)
+        define_route("put", path, method, {}, &blk)
       end
 
       def define_routes
