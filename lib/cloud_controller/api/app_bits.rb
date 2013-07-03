@@ -74,7 +74,7 @@ module VCAP::CloudController
       raise Errors::AppBitsUploadInvalid.new("invalid :#{name}")
     end
 
-    put "#{path_id}/bits", :upload
+    form_put "#{path_id}/bits", :upload
     get "#{path_id}/download", :download
   end
 end
